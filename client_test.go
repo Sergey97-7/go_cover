@@ -51,9 +51,6 @@ func FindUsersDummy(w http.ResponseWriter, r *http.Request) {
 		w.Write(res)
 	case "_bad_token":
 		w.WriteHeader(http.StatusUnauthorized)
-	case "_timeout_err":
-		time.Sleep(2000 * time.Millisecond)
-		w.WriteHeader(http.StatusGatewayTimeout)
 	case "_fatal_err":
 		w.WriteHeader(http.StatusInternalServerError)
 	case "_bad_req_json_err":
@@ -152,10 +149,6 @@ func TestFindUsers(t *testing.T) {
 		//client errors
 		{
 			IsError:     true,
-			AccessToken: "_timeout_err",
-		},
-		{
-			IsError:     true,
 			AccessToken: "_internal_err",
 		},
 		//http code errors
@@ -202,12 +195,10 @@ func TestFindUsers(t *testing.T) {
 }
 func TestFindUsersTimeout(t *testing.T) {
 	handlerFunc := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		time.Sleep(200 * time.Microsecond)
-		w.WriteHeader(http.StatusOK)
-		res, _ := json.Marshal(mockUsers)
-		w.Write(res)
+		time.Sleep(2 * time.Second)
+		w.WriteHeader(http.StatusGatewayTimeout)
 	})
-	ts := httptest.NewServer(http.TimeoutHandler(handlerFunc, 1*time.Millisecond, "server timeout"))
+	ts := httptest.NewServer(http.TimeoutHandler(handlerFunc, 10*time.Millisecond, "server timeout"))
 	client := &SearchClient{
 		AccessToken: "_timeout_err",
 		URL:         ts.URL,
@@ -218,8 +209,6 @@ func TestFindUsersTimeout(t *testing.T) {
 	}
 	http.DefaultTransport.(*http.Transport).ResponseHeaderTimeout = 10 * time.Millisecond
 	time.Sleep(10 * time.Millisecond)
-
-	http.DefaultTransport.(*http.Transport).ResponseHeaderTimeout = 50 * time.Millisecond
 	res, err := client.FindUsers(item.SearchRequest)
 	if err != nil && !item.IsError {
 		t.Errorf("[%d] unexpected error: %#v", 1, err)
@@ -230,6 +219,8 @@ func TestFindUsersTimeout(t *testing.T) {
 	if err == nil && !reflect.DeepEqual(item.SearchResponse, *res) {
 		t.Errorf("[%d] wrong result, expected %#v, got %#v", 1, item.SearchResponse, res)
 	}
+	http.DefaultTransport.(*http.Transport).ResponseHeaderTimeout = 50 * time.Second
+
 	ts.Close()
 }
 
